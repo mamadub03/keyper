@@ -23,3 +23,9 @@ keyper_engineering_kickoff.md
 # Local env / tunnel scratch
 .env.*.local
 *.log
+
+# Run artifacts
+# screenshots/ is where AgentCore Browser dumps page screenshots
+screenshots/
+# TypeScript incremental build cache
+*.tsbuildinfo

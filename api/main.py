@@ -13,14 +13,24 @@ the agent's job. This file should stay boring on purpose.
 from __future__ import annotations
 
 import os
-from typing import Dict
+from typing import Dict, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from agent.schemas import FixRequest, ScanRequest, ScanResult
 
 INVOKE_MODE = os.environ.get("KEYPER_INVOKE_MODE", "local")  # "local" | "runtime"
+
+# Set by the launcher (run.sh / run.ps1) once the cloudflared tunnel to the
+# local auth lab is up. When present, the UI pre-fills its form with the
+# four demo scenarios so a first-time user can just click "Test My Accounts"
+# — nothing to copy between terminals. Empty in a plain `uvicorn` run, in
+# which case the UI form starts blank and the user types their own URLs.
+DEMO_LAB_URL = os.environ.get("KEYPER_LAB_URL", "").rstrip("/")
+DEMO_IDENTITY = os.environ.get("KEYPER_DEMO_IDENTITY", "student@g.school.edu")
+DEMO_SCENARIOS = ["scenario-a", "scenario-b", "scenario-c", "scenario-d"]
 
 app = FastAPI(title="Keyper API")
 
@@ -56,6 +66,25 @@ def _invoke(payload: dict) -> ScanResult:
 @app.get("/health")
 def health():
     return {"status": "ok", "invoke_mode": INVOKE_MODE}
+
+
+class DemoConfig(BaseModel):
+    """What the UI needs to pre-populate itself for the local demo."""
+
+    lab_url: str
+    identity: str
+    service_urls: List[str]
+
+
+@app.get("/demo-config", response_model=DemoConfig)
+def demo_config():
+    """Pre-fill data for the UI form.
+
+    `service_urls` is empty unless the launcher exported KEYPER_LAB_URL, so
+    a bare `uvicorn api.main:app` still serves a sensible (blank) form.
+    """
+    urls = [f"{DEMO_LAB_URL}/{s}" for s in DEMO_SCENARIOS] if DEMO_LAB_URL else []
+    return DemoConfig(lab_url=DEMO_LAB_URL, identity=DEMO_IDENTITY, service_urls=urls)
 
 
 @app.post("/scan", response_model=ScanResult)

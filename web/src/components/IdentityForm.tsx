@@ -3,12 +3,18 @@ import { useState } from "react";
 interface Props {
   onSubmit: (identity: string, aliases: string[], urls: string[]) => void;
   loading: boolean;
+  // Pre-fill values from GET /demo-config. Empty when running without the
+  // launcher; in that case the form starts blank with three URL rows.
+  defaultIdentity?: string;
+  defaultUrls?: string[];
 }
 
-export function IdentityForm({ onSubmit, loading }: Props) {
-  const [identity, setIdentity] = useState("");
+export function IdentityForm({ onSubmit, loading, defaultIdentity = "", defaultUrls = [] }: Props) {
+  const [identity, setIdentity] = useState(defaultIdentity);
   const [aliasText, setAliasText] = useState("");
-  const [urls, setUrls] = useState(["", "", ""]);
+  const [urls, setUrls] = useState<string[]>(
+    defaultUrls.length > 0 ? defaultUrls : ["", "", ""],
+  );
 
   function updateUrl(i: number, value: string) {
     const next = [...urls];

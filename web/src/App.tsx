@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IdentityForm } from "./components/IdentityForm";
 import { ResultCard } from "./components/ResultCard";
 import { EvidenceDrawer } from "./components/EvidenceDrawer";
 import { FixPanel } from "./components/FixPanel";
-import { fixService, scanService } from "./api";
-import type { ScanResult } from "./types";
+import { fixService, getDemoConfig, scanService } from "./api";
+import type { DemoConfig, ScanResult } from "./types";
 
 export default function App() {
   const [identity, setIdentity] = useState("");
@@ -14,6 +14,17 @@ export default function App() {
   const [fixing, setFixing] = useState<string | null>(null);
   const [evidenceFor, setEvidenceFor] = useState<ScanResult | null>(null);
   const [fixPanelFor, setFixPanelFor] = useState<ScanResult | null>(null);
+
+  // Ask the API how to pre-fill the form. Until this resolves we don't
+  // render the form, so IdentityForm can seed its state straight from the
+  // config with no async races. `null` = still loading; a config with an
+  // empty service_urls just means "start blank".
+  const [demo, setDemo] = useState<DemoConfig | null>(null);
+  useEffect(() => {
+    getDemoConfig()
+      .then(setDemo)
+      .catch(() => setDemo({ lab_url: "", identity: "", service_urls: [] }));
+  }, []);
 
   async function handleTest(newIdentity: string, newAliases: string[], urls: string[]) {
     setIdentity(newIdentity);
@@ -66,9 +77,18 @@ export default function App() {
     }
   }
 
+  if (!demo) {
+    return <div className="app" />; // brief: waiting on /demo-config from localhost
+  }
+
   return (
     <div className="app">
-      <IdentityForm onSubmit={handleTest} loading={loading} />
+      <IdentityForm
+        onSubmit={handleTest}
+        loading={loading}
+        defaultIdentity={demo.identity}
+        defaultUrls={demo.service_urls}
+      />
 
       {results.length > 0 && (
         <section>

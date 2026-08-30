@@ -49,3 +49,10 @@ export interface FixRequest extends Omit<ScanRequest, "mode"> {
   mode: "FIX";
   approved: true;
 }
+
+// Mirrors api/main.py DemoConfig.
+export interface DemoConfig {
+  lab_url: string;
+  identity: string;
+  service_urls: string[];
+}

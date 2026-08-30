@@ -11,6 +11,7 @@ in tools.py as a generic tool — never as an `if service_url == ...` check.
 from __future__ import annotations
 
 import os
+import sys
 
 from strands import Agent
 from strands.models import BedrockModel
@@ -31,6 +32,46 @@ AWS_REGION = os.environ.get("KEYPER_AWS_REGION", "us-west-2")
 BEDROCK_MODEL_ID = os.environ.get(
     "KEYPER_BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 )
+
+# Per-1M-token USD rates for the cost estimate printed when
+# KEYPER_DEBUG_METRICS is set. Defaults are Claude Sonnet 4.5 on Bedrock
+# (input / output / cache-read / cache-write); override if you point
+# KEYPER_BEDROCK_MODEL_ID at a different model.
+_PRICE_PER_MTOK = {
+    "in": float(os.environ.get("KEYPER_PRICE_IN", "3.0")),
+    "out": float(os.environ.get("KEYPER_PRICE_OUT", "15.0")),
+    "cache_read": float(os.environ.get("KEYPER_PRICE_CACHE_READ", "0.30")),
+    "cache_write": float(os.environ.get("KEYPER_PRICE_CACHE_WRITE", "3.75")),
+}
+
+
+def _log_run_cost(label: str, result) -> None:
+    """Print token usage + a rough Bedrock cost for one agent invocation.
+
+    Only fires when KEYPER_DEBUG_METRICS is set, and never raises — a
+    metrics-shape change in the SDK must not break a scan.
+    """
+    if not os.environ.get("KEYPER_DEBUG_METRICS"):
+        return
+    try:
+        u = result.metrics.accumulated_usage
+        i, o = int(u.get("inputTokens", 0)), int(u.get("outputTokens", 0))
+        cr, cw = int(u.get("cacheReadInputTokens", 0)), int(u.get("cacheWriteInputTokens", 0))
+        cost = (
+            i / 1e6 * _PRICE_PER_MTOK["in"]
+            + o / 1e6 * _PRICE_PER_MTOK["out"]
+            + cr / 1e6 * _PRICE_PER_MTOK["cache_read"]
+            + cw / 1e6 * _PRICE_PER_MTOK["cache_write"]
+        )
+        cycles = getattr(result.metrics, "cycle_count", "?")
+        print(
+            f"[keyper cost] {label}: {cycles} cycles | "
+            f"in={i} out={o} cache_read={cr} cache_write={cw} tok "
+            f"| ~${cost:.4f} (model inference only; AgentCore Browser billed separately)",
+            file=sys.stderr,
+        )
+    except Exception as exc:  # pragma: no cover - diagnostics must never break a run
+        print(f"[keyper cost] ({label}) metrics unavailable: {exc}", file=sys.stderr)
 
 
 def _build_agent(log: EvidenceLog) -> Agent:
@@ -61,6 +102,7 @@ def _run_structured(agent: Agent, task_prompt: str) -> ScanResult:
     ScanResult rather than ``None``.
     """
     result = agent(task_prompt, structured_output_model=ScanResult)
+    _log_run_cost("scan/fix", result)
     if result.structured_output is None:
         return agent.structured_output(ScanResult)
     return result.structured_output
