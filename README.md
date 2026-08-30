@@ -88,7 +88,8 @@ opens <http://localhost:5173> with the four demo scenarios pre-filled.
 
 **Prerequisites:** Python 3.12+, Node 20+, `cloudflared`, and AWS
 credentials configured once (`aws configure`) with Bedrock access to Claude
-Sonnet 4.5. Full details and cost notes in [`SETUP.md`](SETUP.md).
+Sonnet 4.5. Full details and cost notes in [`SETUP.md`](SETUP.md); the
+step-by-step demo walkthrough is in [`DEMO.md`](DEMO.md).
 
 ## License
 

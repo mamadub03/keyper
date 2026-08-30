@@ -47,12 +47,29 @@ function Stop-All {
     }
 }
 
+# Read a file another process is still writing to (cloudflared holds its
+# output open). Get-Content / Select-String can trip over the write lock on
+# Windows; opening with FileShare.ReadWrite does not.
+function Read-Shared([string]$path) {
+    if (-not (Test-Path $path)) { return "" }
+    try {
+        $fs = [System.IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
+        $sr = New-Object System.IO.StreamReader($fs)
+        $text = $sr.ReadToEnd()
+        $sr.Close(); $fs.Close()
+        return $text
+    } catch { return "" }
+}
+
 # --- resolve tools --------------------------------------------------------
 $py = Resolve-Tool "python" @()
 if (-not $py) { throw "python not found on PATH (need 3.12+)." }
 
 $npm = Resolve-Tool "npm" @("$env:ProgramFiles\nodejs\npm.cmd")
 if (-not $npm) { throw "npm not found on PATH (need Node.js 20+)." }
+
+$node = Resolve-Tool "node" @("$env:ProgramFiles\nodejs\node.exe")
+if (-not $node) { throw "node not found on PATH (need Node.js 20+)." }
 
 $aws = Resolve-Tool "aws" @("$env:ProgramFiles\Amazon\AWSCLIV2\aws.exe",
                             "$env:LOCALAPPDATA\Programs\Amazon\AWSCLIV2\aws.exe")
@@ -95,20 +112,25 @@ try {
                               "--port", "8090", "--log-level", "warning") | Out-Null
 
         Write-Host "Opening cloudflared tunnel..." -ForegroundColor Cyan
-        $tlog = [System.IO.Path]::GetTempFileName()
-        Start-Component $cf @("tunnel", "--url", "http://localhost:8090",
-                              "--no-autoupdate", "--logfile", $tlog) | Out-Null
+        # cloudflared prints the assigned URL to stderr. Capture both streams
+        # to files we own so the URL scrape doesn't fight a write lock.
+        $tout = Join-Path ([System.IO.Path]::GetTempPath()) "keyper-cf-out.log"
+        $terr = Join-Path ([System.IO.Path]::GetTempPath()) "keyper-cf-err.log"
+        Remove-Item $tout, $terr -ErrorAction SilentlyContinue
+        $cfp = Start-Process -FilePath $cf -PassThru -NoNewWindow -WorkingDirectory $root `
+            -ArgumentList @("tunnel", "--url", "http://localhost:8090", "--no-autoupdate") `
+            -RedirectStandardOutput $tout -RedirectStandardError $terr
+        [void]$started.Add($cfp)
 
         $labUrl = $null
-        foreach ($i in 1..60) {
+        foreach ($i in 1..80) {
             Start-Sleep -Milliseconds 750
-            if (Test-Path $tlog) {
-                $hit = Select-String -Path $tlog -Pattern "https://[a-z0-9-]+\.trycloudflare\.com" |
-                       Select-Object -First 1
-                if ($hit) { $labUrl = $hit.Matches[0].Value; break }
-            }
+            $m = [regex]::Match((Read-Shared $terr) + (Read-Shared $tout),
+                                "https://[a-z0-9-]+\.trycloudflare\.com")
+            if ($m.Success) { $labUrl = $m.Value; break }
+            if ($cfp.HasExited) { throw "cloudflared exited early. See $terr" }
         }
-        if (-not $labUrl) { throw "Tunnel did not report a URL in time. See $tlog" }
+        if (-not $labUrl) { throw "Tunnel did not report a URL within 60s. See $terr" }
         $env:KEYPER_LAB_URL = $labUrl
         Write-Host "  lab reachable at $labUrl" -ForegroundColor Green
     }
@@ -118,10 +140,25 @@ try {
                           "--port", "8000", "--log-level", "warning") | Out-Null
 
     Write-Host "Starting web UI on :5173..." -ForegroundColor Cyan
-    Start-Component $npm @("--prefix", "$root\web", "run", "dev", "--",
-                           "--host", "127.0.0.1", "--strictPort") | Out-Null
+    # Launch Vite through node directly — avoids the npm.cmd shim and the
+    # "space in C:\Program Files" quoting problems that come with routing a
+    # .cmd through Start-Process / cmd.exe.
+    $vite = Join-Path $root "web\node_modules\vite\bin\vite.js"
+    Start-Component $node @($vite, "--host", "127.0.0.1", "--strictPort") "$root\web" | Out-Null
 
-    Start-Sleep -Seconds 3
+    # Wait for the three ports so a silent startup failure surfaces here
+    # instead of the user meeting a dead page.
+    foreach ($svc in @(@{n = "API"; p = 8000 }, @{n = "web UI"; p = 5173 })) {
+        $ok = $false
+        foreach ($i in 1..40) {
+            Start-Sleep -Milliseconds 500
+            if (Test-NetConnection -ComputerName "localhost" -Port $svc.p -WarningAction SilentlyContinue -InformationLevel Quiet) {
+                $ok = $true; break
+            }
+        }
+        if (-not $ok) { throw "$($svc.n) did not come up on port $($svc.p) — check the output above." }
+    }
+
     Start-Process "http://localhost:5173"
     Write-Host "`nKeyper is up. Open http://localhost:5173  -  Ctrl+C to stop.`n" -ForegroundColor Green
 
