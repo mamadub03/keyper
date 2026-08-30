@@ -41,18 +41,29 @@ def _build_agent(log: EvidenceLog) -> Agent:
 
 
 def _run_structured(agent: Agent, task_prompt: str) -> ScanResult:
-    """Call the agent and coerce its answer into a ScanResult.
+    """Run the agent's full browsing loop and get its answer back as a ScanResult.
 
-    Strands' structured-output API has moved between releases. This tries the
-    current documented call shape first and falls back to the older one so a
-    minor SDK version difference doesn't stall the whole build. If BOTH fail,
-    check https://strandsagents.com/docs for the current signature.
+    Confirmed against strands-agents 1.54.0 (see the SDK's ``Agent.__call__``
+    and ``AgentResult`` definitions):
+
+      - Passing ``structured_output_model=`` to the agent call runs the
+        normal tool-use loop first — the agent drives the AgentCore browser
+        and records evidence exactly as it would without structured output —
+        and then projects the finished conversation onto the schema in the
+        *same* invocation. That keeps it to one pass (cheaper) while still
+        leaving the browser reasoning fully observable.
+      - The parsed model lands on ``AgentResult.structured_output``.
+
+    Fallback: if the loop ends without a schema-valid answer (it stopped at a
+    human checkpoint, or a tool errored), do one explicit structuring pass
+    over whatever conversation exists — ``Agent.structured_output(model)``
+    with no prompt reads the existing history — so the caller always gets a
+    ScanResult rather than ``None``.
     """
-    try:
-        result = agent(task_prompt, structured_output_model=ScanResult)
-        return result.structured_output
-    except TypeError:
-        return agent.structured_output(ScanResult, task_prompt)
+    result = agent(task_prompt, structured_output_model=ScanResult)
+    if result.structured_output is None:
+        return agent.structured_output(ScanResult)
+    return result.structured_output
 
 
 def run_scan(request: ScanRequest) -> ScanResult:

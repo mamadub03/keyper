@@ -5,8 +5,9 @@ seen before. Per Section 11 of the kickoff doc, each one uses different
 wording, DOM structure, and navigation so the agent genuinely has to reason
 about the page rather than pattern-match on markup it was tuned against.
 
-Run locally:
-    uvicorn auth-lab.app:app --reload --port 8090
+Run locally (from the repo root — the dir name has a hyphen so it can't be
+imported as `auth-lab.app`; point uvicorn at it with --app-dir instead):
+    uvicorn app:app --app-dir auth-lab --reload --port 8090
 
 Then deploy somewhere with a public HTTPS URL (see scripts/deploy_lab.sh and
 RUNBOOK.md) — AgentCore Browser runs in an AWS-managed environment and
