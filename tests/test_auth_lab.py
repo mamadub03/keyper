@@ -41,9 +41,22 @@ def test_scenario_c_starts_at_risk_and_flips_to_safe_after_both_fixes():
     client.post("/scenario-c/set-recovery", data={"recovery_email": "personal@example.com"})
 
     after = client.get("/scenario-c")
-    assert "personal login is configured" in after.text.lower()
+    assert "password sign-in" in after.text.lower()
     assert "personal@example.com" in after.text
     assert "student@school.edu" not in after.text
+
+
+def test_scenario_c_rejects_blank_and_institutional_recovery_email():
+    # The fix must move recovery OFF the institutional identity, so the lab
+    # only accepts a real personal address.
+    client.post("/scenario-c/set-recovery", data={"recovery_email": ""})
+    client.post("/scenario-c/set-recovery", data={"recovery_email": "someone@g.school.edu"})
+    res = client.get("/scenario-c")
+    assert "student@school.edu (institutional" in res.text
+
+    client.post("/scenario-c/set-recovery", data={"recovery_email": "me@personal.com"})
+    res = client.get("/scenario-c")
+    assert "me@personal.com" in res.text
 
 
 def test_scenario_d_withholds_detail():

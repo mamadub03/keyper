@@ -146,15 +146,22 @@ def scenario_b():
 
 @app.get("/scenario-c", response_class=HTMLResponse)
 def scenario_c():
+    # State is described so it is verifiable by reading alone — an agent
+    # should be able to conclude SAFE/AT_RISK from this text without having
+    # to actually perform a login.
     login_line = (
-        "Personal login is configured and active."
+        "Sign-in methods: (1) Institutional SSO — g.school.edu. "
+        "(2) Password sign-in — enabled and active; you can sign in with your "
+        "email address and password without institutional SSO."
         if state["independent_login_added"]
-        else "Institutional SSO (g.school.edu) is currently the only sign-in method."
+        else "Sign-in methods: Institutional SSO (g.school.edu) only. "
+        "No password or other independent sign-in method is configured."
     )
     recovery_line = (
-        f"Recovery contact: {state['recovery_email']} (personal)"
+        f"Recovery contact: {state['recovery_email']} "
+        "(personal address, independent of g.school.edu)"
         if state["recovery_email"] != "student@school.edu"
-        else "Recovery contact: student@school.edu (institutional)"
+        else "Recovery contact: student@school.edu (institutional — managed by g.school.edu)"
     )
 
     add_login_block = "" if state["independent_login_added"] else """
@@ -201,7 +208,14 @@ def scenario_c_add_login():
 
 @app.post("/scenario-c/set-recovery")
 def scenario_c_set_recovery(recovery_email: str = Form(...)):
-    state["recovery_email"] = recovery_email
+    # Reject empty and institutional addresses — the point of the fix is to
+    # move recovery OFF the institutional identity, so only a real personal
+    # address counts. An invalid submit leaves the state (and the AT_RISK
+    # finding) unchanged.
+    email = recovery_email.strip()
+    institutional = email.endswith(("@school.edu", "@g.school.edu")) or "@" not in email
+    if email and not institutional:
+        state["recovery_email"] = email
     return RedirectResponse("/scenario-c", status_code=303)
 
 
