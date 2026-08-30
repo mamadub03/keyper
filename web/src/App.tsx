@@ -29,32 +29,38 @@ export default function App() {
   async function handleTest(newIdentity: string, newAliases: string[], urls: string[]) {
     setIdentity(newIdentity);
     setAliases(newAliases);
+    setResults([]);
     setLoading(true);
+    // Scan one service at a time and show each card as it lands. Sequential
+    // on purpose: each scan drives its own AgentCore Browser session, and
+    // firing four at once risks a concurrency quota mid-demo. It also reads
+    // better on screen — the report builds up service by service.
     try {
-      const settled = await Promise.all(
-        urls.map((url) =>
-          scanService({
+      for (const url of urls) {
+        let card: ScanResult;
+        try {
+          card = await scanService({
             institutional_identity: newIdentity,
             institutional_aliases: newAliases,
             service_url: url,
             mode: "SCAN",
-          }).catch(
-            (err): ScanResult => ({
-              service_name: url,
-              service_url: url,
-              status: "UNKNOWN",
-              authentication: { institutional_methods_found: [], independent_method_found: false, independent_method: null, verified: false },
-              recovery: { institutional_dependency_found: false, independent_method_found: false, verified: false },
-              dependencies: [],
-              evidence: [],
-              remediation_options: [],
-              human_action_required: true,
-              summary: `Scan failed: ${err.message}`,
-            })
-          )
-        )
-      );
-      setResults(settled);
+          });
+        } catch (err) {
+          card = {
+            service_name: url,
+            service_url: url,
+            status: "UNKNOWN",
+            authentication: { institutional_methods_found: [], independent_method_found: false, independent_method: null, verified: false },
+            recovery: { institutional_dependency_found: false, independent_method_found: false, verified: false },
+            dependencies: [],
+            evidence: [],
+            remediation_options: [],
+            human_action_required: true,
+            summary: `Scan failed: ${err instanceof Error ? err.message : String(err)}`,
+          };
+        }
+        setResults((prev) => [...prev, card]);
+      }
     } finally {
       setLoading(false);
     }
@@ -90,9 +96,12 @@ export default function App() {
         defaultUrls={demo.service_urls}
       />
 
-      {results.length > 0 && (
+      {(results.length > 0 || loading) && (
         <section>
-          <h2>Continuity Report</h2>
+          <h2>
+            Continuity Report
+            {loading && <span className="scanning"> — scanning… ({results.length} done)</span>}
+          </h2>
           <div className="results-grid">
             {results.map((r) => (
               <ResultCard
