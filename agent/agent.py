@@ -15,6 +15,7 @@ import sys
 
 from strands import Agent
 from strands.models import BedrockModel
+from strands.types.agent import Limits
 from strands_tools.browser import AgentCoreBrowser
 
 from .prompts import SYSTEM_PROMPT, build_fix_task, build_scan_task
@@ -74,8 +75,29 @@ def _log_run_cost(label: str, result) -> None:
         print(f"[keyper cost] ({label}) metrics unavailable: {exc}", file=sys.stderr)
 
 
+# Per-invocation runaway guards. A well-behaved scan of any of the demo
+# scenarios finishes in well under 15 cycles; anything past TURN_LIMIT is the
+# agent thrashing (e.g. re-loading a deliberately sparse page over and over),
+# which just burns tokens without improving the answer. When a limit trips
+# the loop stops cleanly and _run_structured() falls back to an explicit
+# structuring pass. Override via env for debugging.
+TURN_LIMIT = int(os.environ.get("KEYPER_MAX_TURNS", "16"))
+TOTAL_TOKEN_LIMIT = int(os.environ.get("KEYPER_MAX_TOKENS", "300000"))
+
+
 def _build_agent(log: EvidenceLog) -> Agent:
-    model = BedrockModel(model_id=BEDROCK_MODEL_ID, region_name=AWS_REGION, temperature=0.2)
+    # cache_config="auto" + cache_tools puts Bedrock prompt-cache checkpoints
+    # on the (large, unchanging) system prompt and tool definitions. Across a
+    # multi-cycle browsing loop those are re-sent every turn, so caching them
+    # drops their input cost from $3.00 to $0.30 per million tokens — the
+    # single biggest lever on per-scan cost.
+    model = BedrockModel(
+        model_id=BEDROCK_MODEL_ID,
+        region_name=AWS_REGION,
+        temperature=0.2,
+        cache_config={"strategy": "auto"},
+        cache_tools="default",
+    )
     browser_tool = AgentCoreBrowser(region=AWS_REGION)
     tools = [browser_tool.browser, *make_tools(log)]
     return Agent(model=model, tools=tools, system_prompt=SYSTEM_PROMPT)
@@ -101,7 +123,11 @@ def _run_structured(agent: Agent, task_prompt: str) -> ScanResult:
     with no prompt reads the existing history — so the caller always gets a
     ScanResult rather than ``None``.
     """
-    result = agent(task_prompt, structured_output_model=ScanResult)
+    result = agent(
+        task_prompt,
+        structured_output_model=ScanResult,
+        limits=Limits(turns=TURN_LIMIT, total_tokens=TOTAL_TOKEN_LIMIT),
+    )
     _log_run_cost("scan/fix", result)
     if result.structured_output is None:
         return agent.structured_output(ScanResult)

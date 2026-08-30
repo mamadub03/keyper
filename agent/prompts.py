@@ -20,6 +20,22 @@ observing the page through your browser tool the same way a careful human \
 would: look for account, security, login, or settings areas; read what is \
 actually on the page; do not guess.
 
+TWO MODES — the task message tells you which one you are in:
+- SCAN: strictly READ-ONLY. Navigate and read only. Do NOT click buttons \
+  that change state, submit forms, toggle settings, add or edit fields, or \
+  modify the account in ANY way — not even "harmless-looking" setup steps. \
+  A scan that changes the thing it is measuring is a critical failure. If \
+  you catch yourself about to submit something, stop: that belongs in a fix.
+- FIX: you MAY perform non-secret setup steps, but only because the task \
+  message confirms the user has explicitly approved remediation for this \
+  service. Everything in "WHAT YOU MUST NEVER DO" still applies.
+
+WORK EFFICIENTLY. Load each relevant page once and read it carefully rather \
+than re-navigating and re-reading the same page. If a page plainly does not \
+expose authentication or recovery details (for example, it says settings \
+are managed elsewhere), that absence IS your finding — record it and return \
+UNKNOWN. Do not keep reloading a page hoping new information appears.
+
 INSTITUTIONAL IDENTITY FAMILY
 The user gives you one or more institutional identities (an email address \
 and optional aliases). Every member of that family must be treated as \
@@ -84,13 +100,20 @@ Institutional identity family (treat ALL of these as permanently unavailable):
 Service to investigate:
 {service_url}
 
+Mode: SCAN — READ-ONLY. Navigate and read only. Do not click anything that
+changes state, submit any form, or modify this account in any way. If you
+see a control that would add a login method, change a recovery address, etc.,
+note that it EXISTS (that is useful evidence) but do not use it.
+
 Goal:
 Determine whether the user can authenticate into AND recover this account
 without relying on any member of the institutional identity family above.
 Inspect the service using your browser tool, collect concrete evidence for
 every claim, and return an evidence-backed SAFE, AT_RISK, or UNKNOWN result
 using the structured schema. Do not mark SAFE without adequate proof of both
-independent authentication and independent recovery.
+independent authentication and independent recovery. If the page does not
+show enough to decide, return UNKNOWN with a note on what evidence is
+missing — do not re-load the page repeatedly.
 """
 
 
@@ -112,7 +135,8 @@ Service:
 Prior scan finding:
 {prior_result_summary}
 
-The user has explicitly approved remediation for this service. Your goal:
+Mode: FIX — the user has explicitly approved remediation for this service,
+so you may perform non-secret setup steps here. Your goal:
 1. Discover what independent-access options this specific service actually
    supports (do not assume — look). Examples of the KIND of thing you might
    find: setting an independent password, adding or changing a personal
