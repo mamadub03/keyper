@@ -89,9 +89,9 @@ def _log_run_cost(label: str, result) -> None:
 # needs more room — it does a scan, discovers options, performs setup steps,
 # then re-tests — so it gets a higher cap. When a limit trips the loop stops
 # cleanly and _run_structured() degrades gracefully. Override via env.
-SCAN_TURN_LIMIT = int(os.environ.get("KEYPER_MAX_TURNS", "16"))
-FIX_TURN_LIMIT = int(os.environ.get("KEYPER_MAX_TURNS_FIX", "30"))
-TOTAL_TOKEN_LIMIT = int(os.environ.get("KEYPER_MAX_TOKENS", "600000"))
+SCAN_TURN_LIMIT = int(os.environ.get("KEYPER_MAX_TURNS", "22"))
+FIX_TURN_LIMIT = int(os.environ.get("KEYPER_MAX_TURNS_FIX", "34"))
+TOTAL_TOKEN_LIMIT = int(os.environ.get("KEYPER_MAX_TOKENS", "700000"))
 
 
 def _build_agent(log: EvidenceLog) -> Agent:
@@ -155,10 +155,21 @@ def _run_structured(agent: Agent, task_prompt: str, turn_limit: int, service_url
     if result.structured_output is not None:
         return result.structured_output
 
+    # The loop stopped without emitting a schema-valid answer — almost always
+    # because it ran out of turns mid-step, leaving the conversation ending
+    # on an unfinished tool call. A bare structured_output() call chokes on
+    # that ("no valid tool use"), so give it one clean turn with an explicit
+    # instruction to conclude from what it already has.
     stopped = getattr(result, "stop_reason", "?")
     try:
-        return agent.structured_output(ScanResult)
-    except Exception as exc:  # conversation not in a structurable state
+        return agent.structured_output(
+            ScanResult,
+            "You have run out of investigation turns. Do not use any more tools. "
+            "Based only on what you have already observed, produce your final "
+            "ScanResult now. If the evidence is insufficient, return status "
+            "UNKNOWN and say what is missing — do not guess SAFE.",
+        )
+    except Exception as exc:  # still not structurable
         return _fallback_result(
             service_url,
             f"the agent loop ended early (stop_reason={stopped!r}: {exc}).",

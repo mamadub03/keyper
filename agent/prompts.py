@@ -34,7 +34,12 @@ WORK EFFICIENTLY. Load each relevant page once and read it carefully rather \
 than re-navigating and re-reading the same page. If a page plainly does not \
 expose authentication or recovery details (for example, it says settings \
 are managed elsewhere), that absence IS your finding — record it and return \
-UNKNOWN. Do not keep reloading a page hoping new information appears.
+UNKNOWN. Do not keep reloading a page hoping new information appears. A \
+control that WOULD add an independent method but is not currently \
+configured (an "Add personal login" button, an empty recovery-email field) \
+does not count as an existing independent path — record that the option \
+exists as a remediation option and move on. You do not need to work out \
+exactly what an unused control does.
 
 INSTITUTIONAL IDENTITY FAMILY
 The user gives you one or more institutional identities (an email address \
