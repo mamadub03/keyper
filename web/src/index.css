@@ -1,0 +1,43 @@
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  background: #f7f7f8;
+  color: #1a1a1a;
+  margin: 0;
+}
+.app { max-width: 880px; margin: 0 auto; padding: 40px 20px; }
+
+.identity-form {
+  background: #fff; border: 1px solid #e2e2e2; border-radius: 12px;
+  padding: 24px; display: flex; flex-direction: column; gap: 10px;
+}
+.identity-form h1 { margin: 0; letter-spacing: 0.05em; }
+.identity-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+.identity-form input { padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 1rem; }
+.section-label { font-weight: 600; margin: 10px 0 0; }
+.identity-form button {
+  margin-top: 12px; padding: 10px; border-radius: 8px; border: none;
+  background: #1a1a1a; color: #fff; font-size: 1rem; cursor: pointer;
+}
+.identity-form button:disabled { opacity: 0.6; cursor: default; }
+
+.results-grid { display: grid; gap: 14px; margin-top: 16px; }
+.result-card { background: #fff; border-radius: 10px; padding: 16px 18px; border: 1px solid #e2e2e2; border-left-width: 6px; }
+.result-card.status-safe { border-left-color: #1f9d55; }
+.result-card.status-at_risk { border-left-color: #d64545; }
+.result-card.status-unknown { border-left-color: #d6a545; }
+.result-card h3 { margin: 0 0 4px; }
+.badge { font-weight: 700; margin: 2px 0 6px; }
+.card-actions { display: flex; gap: 8px; margin-top: 10px; }
+.card-actions button { padding: 6px 12px; border-radius: 6px; border: 1px solid #333; background: #fff; cursor: pointer; }
+
+.drawer-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+  display: flex; justify-content: flex-end; z-index: 10;
+}
+.drawer {
+  background: #fff; width: min(420px, 90vw); height: 100%;
+  padding: 24px; overflow-y: auto;
+}
+.drawer-close { float: right; border: none; background: none; cursor: pointer; font-size: 0.9rem; }
+.checkpoint-note { background: #fff7e6; border: 1px solid #f0d38a; border-radius: 8px; padding: 10px 12px; font-size: 0.9rem; }

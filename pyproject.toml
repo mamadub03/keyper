@@ -1,0 +1,35 @@
+[project]
+name = "keyper"
+version = "0.1.0"
+description = "Disaster-recovery testing for your digital identity — Strands + AgentCore hackathon MVP."
+requires-python = ">=3.12"
+dependencies = [
+    "strands-agents",
+    "strands-agents-tools",
+    "bedrock-agentcore",
+    "boto3",
+    "pydantic>=2",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    # strands_tools.browser imports these even when only the remote
+    # AgentCore browser (not a local Playwright browser) is used —
+    # confirmed by actually importing agent/agent.py during scaffolding.
+    "nest_asyncio",
+    "playwright",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "httpx",
+]
+
+[tool.setuptools]
+# Flat layout: the repo root also holds api/, web/, architecture/, tests/,
+# auth-lab/ — list the importable Python packages explicitly so setuptools
+# doesn't choke on auto-discovery.
+packages = ["agent", "api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

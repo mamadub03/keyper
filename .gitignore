@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.local
+node_modules/
+web/dist/
+.aws-sam/
+.pytest_cache/
+*.egg-info/
+.DS_Store
+
+# Claude Code local files — not part of the project deliverable
+.claude/
+CLAUDE.local.md
+
+# Internal working docs — kept locally, not part of the public repo
+CLAUDE.md
+RUNBOOK.md
+keyper_engineering_kickoff.md
+
+# Local env / tunnel scratch
+.env.*.local
+*.log

@@ -1,0 +1,9 @@
+# Normalize all text files to LF in the repo so shell scripts in scripts/
+# stay executable when cloned on Linux/macOS (CRLF breaks the shebang line).
+* text=auto eol=lf
+
+# Explicitly keep line-ending-sensitive files as LF regardless of platform.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
