@@ -68,6 +68,18 @@ def health():
     return {"status": "ok", "invoke_mode": INVOKE_MODE}
 
 
+@app.post("/reset")
+def reset():
+    """Clear cached scan results so a fresh demo run starts clean.
+
+    Pairs with the auth lab's own POST /reset (see scripts/reset_demo.sh) —
+    together they put both halves of the in-memory state back to zero without
+    restarting either process.
+    """
+    _last_results.clear()
+    return {"cleared": True}
+
+
 class DemoConfig(BaseModel):
     """What the UI needs to pre-populate itself for the local demo."""
 

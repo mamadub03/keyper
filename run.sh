@@ -38,7 +38,7 @@ export KEYPER_AWS_REGION="${KEYPER_AWS_REGION:-us-west-2}"
 "$PY" -c "import strands, fastapi" >/dev/null 2>&1 || {
   echo "Installing Python dependencies (one-time)..."; "$PY" -m pip install -e ".[dev]";
 }
-[ -d web/node_modules ] || { echo "Installing web dependencies (one-time)..."; (cd web && npm install); }
+[ -d web/node_modules ] || { echo "Installing web dependencies (one-time)..."; npm --prefix web install; }
 
 pids=()
 cleanup() {
@@ -72,7 +72,7 @@ echo "Starting API on :8000..."
 "$PY" -m uvicorn api.main:app --port 8000 --log-level warning & pids+=($!)
 
 echo "Starting web UI on :5173..."
-(cd web && npm run dev -- --host 127.0.0.1 --strictPort) & pids+=($!)
+npm --prefix web run dev -- --host 127.0.0.1 --strictPort & pids+=($!)
 
 sleep 3
 ( command -v open >/dev/null && open http://localhost:5173 ) || \

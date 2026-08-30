@@ -1,37 +1,27 @@
 #!/usr/bin/env bash
-# Get the auth lab onto a PUBLIC HTTPS URL. AgentCore Browser runs in an
-# AWS-managed environment and cannot reach localhost (Section 11).
+# Expose the LOCAL auth lab on a public HTTPS URL.
 #
-# This script does not assume a single deployment target because the doc
-# leaves that choice open (Section 9 suggests Lambda Function URL / App
-# Runner / any small AWS-backed host). Pick ONE of the options below,
-# uncomment it, and fill in the blanks — or deploy however you're most
-# comfortable; the only hard requirement is a public https:// URL that
-# serves auth-lab/app.py.
+# AgentCore Browser runs inside AWS and cannot reach localhost, so the lab
+# has to be reachable from the internet. `run.ps1` / `run.sh` already do this
+# automatically with a cloudflared quick tunnel. Use this script only if you
+# started the stack with --no-tunnel and now want a tunnel by hand.
+#
+# The lab is NOT deployed anywhere — it keeps running locally; the tunnel is
+# just a temporary wire and closes when you Ctrl+C.
 set -euo pipefail
 
-echo "Pick a deploy path for auth-lab/app.py (edit this script and uncomment one):"
+PORT="${1:-8090}"
+
+if ! command -v cloudflared >/dev/null 2>&1; then
+  echo "cloudflared not found."
+  echo "  Windows:  winget install --id Cloudflare.cloudflared"
+  echo "  macOS:    brew install cloudflared"
+  echo "  Linux:    https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+  exit 1
+fi
+
+echo "Tunnelling http://localhost:$PORT ..."
+echo "Copy the https://<name>.trycloudflare.com URL below into KEYPER_LAB_URL,"
+echo "then restart the API so /demo-config picks it up."
 echo
-
-# --- Option A: AWS App Runner from source (simplest, ~5-10 min) -----------
-# aws apprunner create-service \
-#   --service-name keyper-auth-lab \
-#   --source-configuration '{"CodeRepository":{"RepositoryUrl":"<your public git remote>","SourceCodeVersion":{"Type":"BRANCH","Value":"main"},"CodeConfiguration":{"ConfigurationSource":"API","CodeConfigurationValues":{"Runtime":"PYTHON_312","BuildCommand":"pip install -r auth-lab/requirements.txt","StartCommand":"uvicorn auth-lab.app:app --host 0.0.0.0 --port 8080","Port":"8080"}}}}'
-
-# --- Option B: Lambda Function URL (needs Mangum to adapt FastAPI) --------
-# pip install mangum -t auth-lab/build --break-system-packages
-# cp auth-lab/app.py auth-lab/build/
-# cd auth-lab/build && zip -r ../lab.zip . && cd -
-# aws lambda create-function --function-name keyper-auth-lab \
-#   --runtime python3.12 --handler app.handler \
-#   --zip-file fileb://auth-lab/lab.zip \
-#   --role <your-lambda-execution-role-arn>
-# aws lambda create-function-url-config --function-name keyper-auth-lab --auth-type NONE
-
-# --- Option C: any host you already use (Fly.io, Render, EC2, etc.) -------
-# Just make sure `uvicorn auth-lab.app:app --host 0.0.0.0 --port <port>`
-# is reachable over https:// and you're done.
-
-echo "No option selected yet — this is intentional. Edit the script, or"
-echo "run 'uvicorn auth-lab.app:app --reload --port 8090' locally first to"
-echo "eyeball the pages before deploying."
+exec cloudflared tunnel --url "http://localhost:$PORT" --no-autoupdate
