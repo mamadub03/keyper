@@ -70,6 +70,39 @@ a scan is actually running:
 Set `KEYPER_DEBUG_METRICS=1` to print per-run token counts and an estimated
 cost. A `$20/month` AWS Budgets alert is a good backstop.
 
+## Deploying the agent to AgentCore Runtime (optional)
+
+The local demo runs the agent in-process (`KEYPER_INVOKE_MODE=local`) and
+needs no deployment. To also run it as a deployed AgentCore Runtime endpoint
+(the "it's actually deployed" milestone):
+
+```bash
+bash scripts/deploy_agent.sh
+```
+
+This creates lasting AWS resources (an ECR image, an IAM execution role, a
+CDK bootstrap stack, the Runtime) and costs a few dollars one-time for the
+build plus pennies/month for image storage. The runtime itself is
+consumption-billed like a local scan. After deploy, put the runtime ARN in
+a `.env` at the repo root:
+
+```ini
+KEYPER_AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:...
+KEYPER_AWS_REGION=us-west-2
+KEYPER_INVOKE_MODE=runtime
+```
+
+The API then calls the deployed agent instead of running it in-process;
+`KEYPER_INVOKE_MODE=local` switches back. The request/response shape is
+identical either way.
+
+Local smoke test of the Runtime entrypoint (no deploy):
+
+```bash
+python -m agent.runtime_entrypoint          # serves :8080
+curl -s localhost:8080/ping                 # -> {"status":"Healthy",...}
+```
+
 ## Tests
 
 ```bash
