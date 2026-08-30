@@ -15,11 +15,19 @@ import sys
 
 from strands import Agent
 from strands.models import BedrockModel
+from strands.models.bedrock import CacheConfig
 from strands.types.agent import Limits
 from strands_tools.browser import AgentCoreBrowser
 
 from .prompts import SYSTEM_PROMPT, build_fix_task, build_scan_task
-from .schemas import FixRequest, ScanRequest, ScanResult
+from .schemas import (
+    AuthenticationFindings,
+    ContinuityStatus,
+    FixRequest,
+    RecoveryFindings,
+    ScanRequest,
+    ScanResult,
+)
 from .tools import EvidenceLog, make_tools
 
 AWS_REGION = os.environ.get("KEYPER_AWS_REGION", "us-west-2")
@@ -75,14 +83,15 @@ def _log_run_cost(label: str, result) -> None:
         print(f"[keyper cost] ({label}) metrics unavailable: {exc}", file=sys.stderr)
 
 
-# Per-invocation runaway guards. A well-behaved scan of any of the demo
-# scenarios finishes in well under 15 cycles; anything past TURN_LIMIT is the
-# agent thrashing (e.g. re-loading a deliberately sparse page over and over),
-# which just burns tokens without improving the answer. When a limit trips
-# the loop stops cleanly and _run_structured() falls back to an explicit
-# structuring pass. Override via env for debugging.
-TURN_LIMIT = int(os.environ.get("KEYPER_MAX_TURNS", "16"))
-TOTAL_TOKEN_LIMIT = int(os.environ.get("KEYPER_MAX_TOKENS", "300000"))
+# Per-invocation runaway guards. A well-behaved scan finishes in well under
+# 15 cycles; anything past the limit is the agent thrashing (e.g. re-loading
+# a deliberately sparse page), which just burns tokens. A fix legitimately
+# needs more room — it does a scan, discovers options, performs setup steps,
+# then re-tests — so it gets a higher cap. When a limit trips the loop stops
+# cleanly and _run_structured() degrades gracefully. Override via env.
+SCAN_TURN_LIMIT = int(os.environ.get("KEYPER_MAX_TURNS", "16"))
+FIX_TURN_LIMIT = int(os.environ.get("KEYPER_MAX_TURNS_FIX", "30"))
+TOTAL_TOKEN_LIMIT = int(os.environ.get("KEYPER_MAX_TOKENS", "600000"))
 
 
 def _build_agent(log: EvidenceLog) -> Agent:
@@ -95,7 +104,7 @@ def _build_agent(log: EvidenceLog) -> Agent:
         model_id=BEDROCK_MODEL_ID,
         region_name=AWS_REGION,
         temperature=0.2,
-        cache_config={"strategy": "auto"},
+        cache_config=CacheConfig(strategy="auto"),
         cache_tools="default",
     )
     browser_tool = AgentCoreBrowser(region=AWS_REGION)
@@ -103,35 +112,57 @@ def _build_agent(log: EvidenceLog) -> Agent:
     return Agent(model=model, tools=tools, system_prompt=SYSTEM_PROMPT)
 
 
-def _run_structured(agent: Agent, task_prompt: str) -> ScanResult:
+def _fallback_result(request_url: str, reason: str) -> ScanResult:
+    """A safe ScanResult for when the loop ends without a usable answer.
+
+    Better an honest UNKNOWN that flags a human than an exception bubbling up
+    to the API or a false SAFE.
+    """
+    return ScanResult(
+        service_name=request_url,
+        service_url=request_url,
+        status=ContinuityStatus.UNKNOWN,
+        authentication=AuthenticationFindings(),
+        recovery=RecoveryFindings(),
+        summary=f"Inconclusive: {reason} A human should re-run or finish this manually.",
+        human_action_required=True,
+    )
+
+
+def _run_structured(agent: Agent, task_prompt: str, turn_limit: int, service_url: str) -> ScanResult:
     """Run the agent's full browsing loop and get its answer back as a ScanResult.
 
     Confirmed against strands-agents 1.54.0 (see the SDK's ``Agent.__call__``
-    and ``AgentResult`` definitions):
+    and ``AgentResult`` definitions): passing ``structured_output_model=`` to
+    the agent call runs the normal tool-use loop first — the agent drives the
+    AgentCore browser and records evidence exactly as it would without
+    structured output — and then projects the finished conversation onto the
+    schema in the *same* invocation. One pass, still fully observable. The
+    parsed model lands on ``AgentResult.structured_output``.
 
-      - Passing ``structured_output_model=`` to the agent call runs the
-        normal tool-use loop first — the agent drives the AgentCore browser
-        and records evidence exactly as it would without structured output —
-        and then projects the finished conversation onto the schema in the
-        *same* invocation. That keeps it to one pass (cheaper) while still
-        leaving the browser reasoning fully observable.
-      - The parsed model lands on ``AgentResult.structured_output``.
-
-    Fallback: if the loop ends without a schema-valid answer (it stopped at a
-    human checkpoint, or a tool errored), do one explicit structuring pass
-    over whatever conversation exists — ``Agent.structured_output(model)``
-    with no prompt reads the existing history — so the caller always gets a
-    ScanResult rather than ``None``.
+    Degradation path: if the loop ends without a schema-valid answer (it hit
+    the turn limit mid-step, stopped at a human checkpoint, or a tool
+    errored), try one explicit structuring pass over the existing history;
+    if even that fails (e.g. the conversation ended mid tool-call), return a
+    safe UNKNOWN rather than raising.
     """
     result = agent(
         task_prompt,
         structured_output_model=ScanResult,
-        limits=Limits(turns=TURN_LIMIT, total_tokens=TOTAL_TOKEN_LIMIT),
+        limits=Limits(turns=turn_limit, total_tokens=TOTAL_TOKEN_LIMIT),
     )
     _log_run_cost("scan/fix", result)
-    if result.structured_output is None:
+    if result.structured_output is not None:
+        return result.structured_output
+
+    stopped = getattr(result, "stop_reason", "?")
+    try:
         return agent.structured_output(ScanResult)
-    return result.structured_output
+    except Exception as exc:  # conversation not in a structurable state
+        return _fallback_result(
+            service_url,
+            f"the agent loop ended early (stop_reason={stopped!r}: {exc}).",
+        )
 
 
 def run_scan(request: ScanRequest) -> ScanResult:
@@ -140,7 +171,7 @@ def run_scan(request: ScanRequest) -> ScanResult:
     task_prompt = build_scan_task(
         request.institutional_identity, request.institutional_aliases, request.service_url
     )
-    result = _run_structured(agent, task_prompt)
+    result = _run_structured(agent, task_prompt, SCAN_TURN_LIMIT, request.service_url)
 
     # Belt-and-suspenders: if the model's own evidence list came back thin
     # but the record_evidence tool captured more, merge them in rather than
@@ -168,7 +199,7 @@ def run_fix(request: FixRequest, prior_result_summary: str) -> ScanResult:
         request.service_url,
         prior_result_summary,
     )
-    result = _run_structured(agent, task_prompt)
+    result = _run_structured(agent, task_prompt, FIX_TURN_LIMIT, request.service_url)
 
     if log.human_checkpoint and not result.human_action_required:
         result.human_action_required = True

@@ -69,35 +69,26 @@ keyper/
 
 ## Getting started
 
-Everything runs locally. The one piece that isn't on your machine is
-Amazon Bedrock AgentCore Browser — it navigates from an AWS-managed
-environment, so the target page has to be reachable from the internet. The
-auth lab still runs locally; a short-lived tunnel exposes it just for the
-duration of a run.
+Everything runs locally with one command. The only piece that isn't on your
+machine is Amazon Bedrock AgentCore Browser — it navigates from an
+AWS-managed environment, so the launcher opens a short-lived tunnel to the
+local demo lab while the app is running.
 
-```bash
-# 1. Confirm AWS / Bedrock / AgentCore access
-bash scripts/prereq_check.sh
-
-# 2. Install Python deps (use a venv if this is a shared machine)
-pip install -e ".[dev]"
-
-# 3. Sanity-check the auth lab with zero AWS dependency
-uvicorn app:app --app-dir auth-lab --reload --port 8090 &
-pytest tests/test_auth_lab.py -v
-
-# 4. Expose the local lab, then do the first real agent run
-#    (any tunnel works; cloudflared quick tunnels need no account)
-cloudflared tunnel --url http://localhost:8090        # prints https://<name>.trycloudflare.com
-export KEYPER_LAB_URL=https://<name>.trycloudflare.com
-python -m agent.local_dev --identity student@g.school.edu --url "$KEYPER_LAB_URL/scenario-a"
-
-# 5. API + UI
-uvicorn api.main:app --reload --port 8000 &
-cd web && npm install && npm run dev
+```powershell
+./run.ps1        # Windows
 ```
 
-A step-by-step local demo walkthrough lives in `SETUP.md`.
+```bash
+./run.sh         # macOS / Linux
+```
+
+That starts the auth lab, tunnel, API, and UI, wires them together, and
+opens <http://localhost:5173> with the four demo scenarios pre-filled.
+`Ctrl+C` stops everything.
+
+**Prerequisites:** Python 3.12+, Node 20+, `cloudflared`, and AWS
+credentials configured once (`aws configure`) with Bedrock access to Claude
+Sonnet 4.5. Full details and cost notes in [`SETUP.md`](SETUP.md).
 
 ## License
 
